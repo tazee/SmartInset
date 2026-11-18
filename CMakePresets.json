@@ -1,0 +1,28 @@
+{
+    "version": 8,
+    "configurePresets": [
+        {
+            "name": "macos-release",
+            "displayName": "macOS Universal Release",
+            "description": "macOS Universal Binary (arm64 + x86_64) Release build",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/SmartInsetKit",
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_OSX_ARCHITECTURES": "x86_64;arm64"
+            }
+        },
+        {
+            "name": "windows-msvc",
+            "displayName": "Windows MSVC Release",
+            "description": "Windows MSVC 64-bit Release build",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build_win",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build_win/SmartInsetKit",
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ]
+}
