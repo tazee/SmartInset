@@ -1,20 +1,25 @@
-# ##### BEGIN GPL LICENSE BLOCK #####
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
+/*
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * The Original Code is Copyright (C) 2026 by Yoshiaki Tazaki.
+ * All rights reserved.
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 #include "inset_tool.hpp"
 
@@ -50,6 +55,7 @@ CInsetTool::CInsetTool()
     check(packet_service.AddPacket(vector_type, LXsP_TOOL_SUBJECT2, LXfVT_GET));
 
     offset_subject = packet_service.GetOffset(LXsCATEGORY_TOOL, LXsP_TOOL_SUBJECT2);
+    offset_screen = packet_service.GetOffset(LXsCATEGORY_TOOL, LXsP_TOOL_SCREEN_EVENT);
     select_mode = mesh_service.SetMode(LXsMARK_SELECT);
 
     CLxUser_SceneService scene_service;
@@ -118,6 +124,11 @@ LXtTagInfoDesc CInsetTool::descInfo[] = {
     { 0 }
 };
 
+unsigned CInsetTool::tmod_Flags()
+{
+    return LXfTMOD_I0_INPUT;
+}
+
 LxResult CInsetTool::tmod_Enable(ILxUnknownID obj)
 {
     CLxUser_Message msg(obj);
@@ -128,6 +139,27 @@ LxResult CInsetTool::tmod_Enable(ILxUnknownID obj)
         return LXe_DISABLED;
     }
     return LXe_OK;
+}
+
+LxResult CInsetTool::tmod_Down(ILxUnknownID vts, ILxUnknownID adjust)
+{
+    dyna_Value(ATTRi_SIZE).GetFlt(&m_size0);
+    int x, y;
+    auto viewId = s_v3d.Mouse (&x, &y);
+    s_v3d.View (viewId, m_view3D);
+    return LXe_TRUE;
+}
+
+void CInsetTool::tmod_Move(ILxUnknownID vts, ILxUnknownID adjust)
+{
+    CLxUser_AdjustTool at(adjust);
+    CLxUser_VectorStack vec(vts);
+    LXpToolScreenEvent* spak = static_cast<LXpToolScreenEvent*>(vec.Read(offset_screen));
+
+    double size = m_size0 + (spak->cx - spak->px) * m_view3D.PixelSize();
+    if (size < 0.0)
+        size = 0.0;
+    at.SetFlt(ATTRi_SIZE, size);
 }
 
 void CInsetTool::atrui_UIHints2(unsigned int index, CLxUser_UIHints& hints)
@@ -147,6 +179,36 @@ void CInsetTool::atrui_UIHints2(unsigned int index, CLxUser_UIHints& hints)
         default:
             break;
     }
+}
+
+LxResult CInsetTool::atrui_DisableMsg (unsigned int index, ILxUnknownID msg)
+{
+    CLxUser_Message		 message (msg);
+
+    int mode;
+    dyna_Value(ATTRi_MODE).GetInt(&mode);
+
+    switch (index) {
+        case ATTRi_FLAT:
+        case ATTRi_ALIGN:
+        case ATTRi_CONNECT:
+            if (mode != MODE_PADDING) {
+                message.SetCode (LXe_DISABLED);
+                message.SetMessage ("tool.smartInset", "OnlyPaddingMode", 0);
+                return LXe_DISABLED;
+            }
+            break;
+        case ATTRi_THRESHOLD:
+        case ATTRi_MERGE:
+        case ATTRi_MERGEDIST:
+            if (mode != MODE_SAFE) {
+                message.SetCode (LXe_DISABLED);
+                message.SetMessage ("tool.smartInset", "OnlySafeMode", 0);
+                return LXe_DISABLED;
+            }
+            break;
+    }
+    return LXe_OK;
 }
 
 LxResult CInsetTool::cui_Enabled(const char* channelName, ILxUnknownID /*msg*/, ILxUnknownID item, ILxUnknownID read)

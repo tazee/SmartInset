@@ -104,6 +104,9 @@ target_include_directories(test_inset PRIVATE
 target_compile_definitions(test_inset PRIVATE
     INSET_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test"
 )
+target_link_libraries(test_inset PRIVATE
+    lxsdk
+)
 add_test(NAME InsetMathTest COMMAND test_inset)
 
 #

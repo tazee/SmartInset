@@ -1,20 +1,25 @@
-# ##### BEGIN GPL LICENSE BLOCK #####
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
+/*
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * The Original Code is Copyright (C) 2026 by Yoshiaki Tazaki.
+ * All rights reserved.
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 #pragma once
 
@@ -30,6 +35,7 @@
 #include <lxsdk/lx_toolui.hpp>
 #include <lxsdk/lx_vector.hpp>
 #include <lxsdk/lx_vmodel.hpp>
+#include <lxsdk/lx_vp.hpp>
 #include <lxsdk/lxu_attributes.hpp>
 
 #define SRVNAME_TOOLOP "toolop.smartInset"
@@ -66,10 +72,14 @@ public:
     LXtID4      tool_Task() LXx_OVERRIDE;
     LxResult    tool_GetOp(void** ppvObj, unsigned flags) LXx_OVERRIDE;
 
+    unsigned tmod_Flags() LXx_OVERRIDE;
     LxResult tmod_Enable(ILxUnknownID obj) LXx_OVERRIDE;
+    LxResult tmod_Down(ILxUnknownID vts, ILxUnknownID adjust) LXx_OVERRIDE;
+    void     tmod_Move(ILxUnknownID vts, ILxUnknownID adjust) LXx_OVERRIDE;
 
     using CLxDynamicAttributes::atrui_UIHints;
     void atrui_UIHints2(unsigned int index, CLxUser_UIHints& hints) LXx_OVERRIDE;
+    LxResult atrui_DisableMsg (unsigned int index, ILxUnknownID msg) LXx_OVERRIDE;
 
     LxResult cui_Enabled(const char* channelName, ILxUnknownID msg, ILxUnknownID item, ILxUnknownID read) LXx_OVERRIDE;
     LxResult cui_DependencyCount(const char* channelName, unsigned* count) LXx_OVERRIDE;
@@ -80,11 +90,16 @@ public:
     static void initialize();
     static LXtTagInfoDesc descInfo[];
 
+    double m_size0;
+
 private:
     CLxUser_LayerService  layer_service;
     CLxUser_MeshService   mesh_service;
     CLxUser_VectorType    vector_type;
+    CLxUser_View3DportService s_v3d;
+    CLxUser_View3D	        m_view3D;
     LXtMarkMode           select_mode = 0;
     unsigned              offset_subject = 0;
+    unsigned              offset_screen = 0;
     LXtItemType           item_type = 0;
 };

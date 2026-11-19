@@ -1,22 +1,28 @@
-# ##### BEGIN GPL LICENSE BLOCK #####
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
+/*
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * The Original Code is Copyright (C) 2026 by Yoshiaki Tazaki.
+ * All rights reserved.
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 #include "padding_inset.hpp"
+#include "util.hpp"
 
 namespace PaddingInset
 {
@@ -521,6 +527,17 @@ namespace PaddingInset
             input_vertices[i] = V3{ pos[0], pos[1], pos[2] };
         }
 
+        // Create a PolygonEdit to add new vertices with interpolating vmaps
+        CLxUser_MeshService s_mesh;
+        CLxUser_PolygonEdit poledit;
+        s_mesh.CreatePolygonEdit(poledit);
+        poledit.SetMesh(mesh, mesh);
+
+        // Set axis plane to compute the triangulation on 2D space.
+        AxisPlane axisPlane(norm);
+
+        AxisTriangles axisTriangles(mesh, polygon);
+
         InsetResult result;
         if (!ComputePaddingInset(input_vertices, normal_v, params, result) || !result.success)
             return LXe_FAILED;
@@ -538,8 +555,15 @@ namespace PaddingInset
             p3[1] = result.all_new_vertices[i].y;
             p3[2] = result.all_new_vertices[i].z;
 
+            // Compute barycentric weights for the new vertex relative to the original polygon's triangles
+            std::vector<double> weights;
+            axisTriangles.MakePositionWeights(p3, weights);
+
+            // Add the new vertex to the mesh and get its point ID
             LXtPointID new_pt = nullptr;
-            if (LXx_FAIL(point.New(p3, &new_pt)) || !new_pt)
+            LxResult rc = poledit.AddFaceVertex(p3, polygon.ID(), weights.data(), &new_pt);
+            //LxResult rc = point.New(p3, &new_pt);
+            if (LXx_FAIL(rc) || !new_pt)
                 return LXe_FAILED;
             modo_point_ids[i] = new_pt;
         }
