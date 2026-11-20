@@ -111,7 +111,14 @@ namespace MathUtil {
         CLxQuaternion quat(qq);
         quat.normalize();
         CLxMatrix4 m4 = quat.asMatrix();
-        m4.getMatrix3x3(m);
+        for (auto i = 0u; i < 3; i++)
+        {
+            for (auto j = 0u; j < 3; j++)
+            {
+                m[i][j] = m4.m[i][j];
+            }
+        }
+        //m4.getMatrix3x3(m);
     }
 
     static bool CrossNormal (LXtVector norm, const LXtVector a1, const LXtVector a2, const LXtVector a3)
@@ -197,10 +204,171 @@ struct AxisPlane
         lx::MatrixMultiply(pos, m_mInv, r);
     }
 
+    void FromPlane(LXtFVector pos, double x, double y, double z)
+    {
+        LXtFVector r;
+        r[m_ix]   = x;
+        r[m_iy]   = y;
+        r[m_axis] = z;
+        lx::MatrixMultiply(pos, m_mInv, r);
+    }
+
     unsigned  m_axis, m_ix, m_iy;
     LXtMatrix m_m, m_mInv;
 };
 
+struct CSpaceTransform
+{
+    CSpaceTransform(CLxUser_Mesh& mesh, CLxUser_Polygon& poly)
+    {
+        m_mesh = mesh;
+        m_polygon = poly;
+        LXtVector norm;
+        poly.Normal(norm);
+        m_axisPlane = AxisPlane(norm);
+        CLxUser_Point point(mesh);
+        unsigned nvert;
+        poly.VertexCount(&nvert);
+        for (auto i = 0u; i < nvert; i++)
+        {
+            LXtPointID vrt;
+            poly.VertexByIndex(i, &vrt);
+            LXtFVector pos;
+            point.Select(vrt);
+            point.Pos(pos);
+            double x, y, z;
+            m_axisPlane.ToPlane(pos, x, y, z);
+            m_points.push_back(CLxVector(x, y, 0.0));
+            //LXtFVector pos1;
+            //m_axisPlane.FromPlane(pos1, x, y, z);
+            //printf("[%u] pos: %f %f %f x %f y %f z %f\n", i, pos[0], pos[1], pos[2], x, y, z);
+        }
+        m_base_index = 0;
+        double min_dist = std::numeric_limits<double>::max();
+        for (auto i = 0u; i < m_points.size(); i++)
+        {
+            double dist = (m_points[i] - m_points[(i + 1) % m_points.size()]).length();
+            if (dist < min_dist)
+            {
+                min_dist = dist;
+                m_base_index = i;
+            }
+        }
+    }
+
+    void SetUVMap(CLxUser_MeshMap& uv_map)
+    {
+        m_boxUV.clear();
+        m_centerUV = CLxVector(0.0, 0.0, 0.0);
+        unsigned nvert;
+        m_polygon.VertexCount(&nvert);
+        for (auto i = 0u; i < nvert; i++)
+        {
+            LXtPointID vrt;
+            m_polygon.VertexByIndex(i, &vrt);
+            LXtFVector uv;
+            m_polygon.MapEvaluate(uv_map.ID(), vrt, uv);
+            m_uvs.push_back(CLxVector(uv[0], uv[1], 0.0));
+            m_boxUV.add(CLxVector(uv[0], uv[1], 0.0));
+            m_centerUV += CLxVector(uv[0], uv[1], 0.0);
+        }
+        m_centerUV /= static_cast<double>(m_points.size());
+
+        m_base3D = m_points[m_base_index];
+        m_dir3D = m_points[(m_base_index + 1) % m_points.size()] - m_base3D;
+        m_baseUV = m_uvs[m_base_index];
+        m_dirUV = m_uvs[(m_base_index + 1) % m_uvs.size()] - m_baseUV;
+        m_angle = MathUtil::AngleVectors(m_dir3D.v, m_dirUV.v);
+        double cross = m_dir3D.v[0] * m_dirUV.v[1] - m_dir3D.v[1] * m_dirUV.v[0];
+        if (cross < 0.0)
+            m_angle = -m_angle;
+        //printf("m_angle: %f cross %f\n", m_angle, cross);
+    
+        m_center3D = CLxVector(0.0, 0.0, 0.0);
+        for (auto i = 0u; i < m_points.size(); i++)
+        {
+            m_center3D += m_points[i];
+        }
+        m_center3D /= static_cast<double>(m_points.size());
+        m_box3D.clear();
+        for (auto i = 0u; i < m_points.size(); i++)
+        {
+            CLxVector pos = m_points[i] - m_center3D;
+            double x = pos[0] * cos(m_angle) - pos[1] * sin(m_angle);
+            double y = pos[0] * sin(m_angle) + pos[1] * cos(m_angle);
+            m_box3D.add(CLxVector(x, y, 0.0));
+        }
+    }
+
+    CLxVector PosToUV(const CLxVector& pos)
+    {
+        double x, y, z;
+        m_axisPlane.ToPlane(pos.v, x, y, z);
+        x -= m_center3D[0];
+        y -= m_center3D[1];
+        CLxVector vec;
+        vec[0] = x * cos(m_angle) - y * sin(m_angle);
+        vec[1] = x * sin(m_angle) + y * cos(m_angle);
+        vec[0] = vec[0] / m_box3D.extent()[0] * m_boxUV.extent()[0] + m_centerUV[0];
+        vec[1] = vec[1] / m_box3D.extent()[1] * m_boxUV.extent()[1] + m_centerUV[1];
+        vec[2] = 0.0;
+        return vec;
+    }
+    class CVisitor : public CLxImpl_AbstractVisitor
+    {
+    public:
+        CLxUser_MeshMap    m_uv_map;
+        std::vector<LXtMeshMapID> uv_map_ids;
+
+        LxResult Evaluate()
+        {
+            uv_map_ids.push_back(m_uv_map.ID());
+            return LXe_OK;
+        }
+    };
+
+
+    void SetUVs(const std::vector<LXtPointID>& point_ids)
+    {
+        CLxUser_Point point(m_mesh);
+        CVisitor vis;
+        vis.m_uv_map.fromMesh(m_mesh);
+        vis.m_uv_map.FilterByType(LXi_VMAP_TEXTUREUV);
+        vis.m_uv_map.Enum(&vis);
+        for (auto uv_map_id : vis.uv_map_ids)
+        {
+            vis.m_uv_map.Select(uv_map_id);
+            SetUVMap(vis.m_uv_map);
+            for (auto point_id : point_ids)
+            {
+                LXtFVector pos;
+                point.Select(point_id);
+                point.Pos(pos);
+                CLxVector new_uv = PosToUV(pos);
+                LXtFVector uv;
+                uv[0] = static_cast<float>(new_uv[0]);
+                uv[1] = static_cast<float>(new_uv[1]);
+                point.SetMapValue(uv_map_id, uv);
+            }
+        }
+    }
+
+    CLxUser_Polygon m_polygon;
+    CLxUser_Mesh m_mesh;
+    AxisPlane m_axisPlane;
+    std::vector<CLxVector> m_points;
+    std::vector<CLxVector> m_uvs;
+    CLxBoundingBox m_box3D;
+    CLxBoundingBox m_boxUV;
+    CLxVector m_center3D;
+    CLxVector m_centerUV;
+    CLxVector m_dir3D;
+    CLxVector m_dirUV;
+    CLxVector m_base3D;
+    CLxVector m_baseUV;
+    double m_angle;
+    unsigned m_base_index;
+};
 
 //
 // Compute weights at the given position on polygon.
@@ -679,6 +847,34 @@ static bool PolygonPlaneMatrix (CLxUser_Mesh& mesh, CLxUser_Polygon& polygon, LX
         lx::MatrixTranspose(m_Inv);
     }
     return true;
+}
+
+static unsigned int VertexListIsReverse (CLxUser_Mesh& mesh, std::vector<LXtPointID>& vertices, const LXtVector normal)
+{
+    if (vertices.size() < 3)
+        return 0;
+
+    CLxUser_Point point;
+    point.fromMesh(mesh);
+
+    LXtFVector pos0, pos1, pos2;
+    point.Select(vertices[0]);
+    point.Pos(pos0);
+    point.Select(vertices[1]);
+    point.Pos(pos1);
+    point.Select(vertices.back());
+    point.Pos(pos2);
+
+    LXtVector v0, v1, v2;
+    LXx_VSUB3(v0, pos1, pos0);
+    LXx_VSUB3(v1, pos2, pos1);
+    LXx_VCROSS(v2, v0, v1);
+
+    double dot = LXx_VDOT(v2, normal);
+    if (dot < 0.0)
+        return 1;
+    else
+        return 0;
 }
 
 }; // MeshUtil

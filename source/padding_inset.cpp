@@ -527,16 +527,8 @@ namespace PaddingInset
             input_vertices[i] = V3{ pos[0], pos[1], pos[2] };
         }
 
-        // Create a PolygonEdit to add new vertices with interpolating vmaps
-        CLxUser_MeshService s_mesh;
-        CLxUser_PolygonEdit poledit;
-        s_mesh.CreatePolygonEdit(poledit);
-        poledit.SetMesh(mesh, mesh);
-
-        // Set axis plane to compute the triangulation on 2D space.
-        AxisPlane axisPlane(norm);
-
-        AxisTriangles axisTriangles(mesh, polygon);
+        // Create a space transform for UV mapping
+        CSpaceTransform spaceTransform(mesh, polygon);
 
         InsetResult result;
         if (!ComputePaddingInset(input_vertices, normal_v, params, result) || !result.success)
@@ -547,6 +539,8 @@ namespace PaddingInset
         {
             modo_point_ids[i] = orig_pt_ids[i];
         }
+    
+        std::vector<LXtPointID> new_pt_ids;
 
         for (size_t i = nvert; i < result.all_new_vertices.size(); ++i)
         {
@@ -555,18 +549,17 @@ namespace PaddingInset
             p3[1] = result.all_new_vertices[i].y;
             p3[2] = result.all_new_vertices[i].z;
 
-            // Compute barycentric weights for the new vertex relative to the original polygon's triangles
-            std::vector<double> weights;
-            axisTriangles.MakePositionWeights(p3, weights);
-
             // Add the new vertex to the mesh and get its point ID
             LXtPointID new_pt = nullptr;
-            LxResult rc = poledit.AddFaceVertex(p3, polygon.ID(), weights.data(), &new_pt);
-            //LxResult rc = point.New(p3, &new_pt);
+            LxResult rc = point.New(p3, &new_pt);
             if (LXx_FAIL(rc) || !new_pt)
                 return LXe_FAILED;
             modo_point_ids[i] = new_pt;
+            new_pt_ids.push_back(new_pt);
         }
+
+        // Set UVs for new points using the space transform
+        spaceTransform.SetUVs(new_pt_ids);
 
         LXtPolygonID protoID = polygon.ID();
 
@@ -589,9 +582,11 @@ namespace PaddingInset
             if (poly_verts.size() < 3)
                 continue;
 
+            unsigned int rev = MeshUtil::VertexListIsReverse(mesh, poly_verts, norm);
+
             LXtPolygonID new_poly = nullptr;
             polygon.Select(protoID);
-            if (LXx_OK(polygon.NewProto(polyType, poly_verts.data(), static_cast<unsigned>(poly_verts.size()), 0, &new_poly)) && new_poly)
+            if (LXx_OK(polygon.NewProto(polyType, poly_verts.data(), static_cast<unsigned>(poly_verts.size()), rev, &new_poly)) && new_poly)
             {
                 created_polys.push_back(new_poly);
                 if (result.is_top_face[f])
