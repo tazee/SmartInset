@@ -39,7 +39,7 @@ CInsetTool::CInsetTool()
 
     dyna_Add(ATTRs_MODE, LXsTYPE_INTEGER);
     dyna_SetHint(ATTRi_MODE, inset_modes);
-    dyna_Add(ATTRs_SIZE, LXsTYPE_DISTANCE);
+    dyna_Add(ATTRs_OFFSET, LXsTYPE_DISTANCE);
     dyna_Add(ATTRs_THRESHOLD, LXsTYPE_FLOAT);
     dyna_Add(ATTRs_MERGE, LXsTYPE_BOOLEAN);
     dyna_Add(ATTRs_MERGEDIST, LXsTYPE_DISTANCE);
@@ -65,7 +65,7 @@ CInsetTool::CInsetTool()
 void CInsetTool::tool_Reset()
 {
     dyna_Value(ATTRi_MODE).SetInt(MODE_SAFE);
-    dyna_Value(ATTRi_SIZE).SetFlt(0.15);
+    dyna_Value(ATTRi_OFFSET).SetFlt(0.0);
     dyna_Value(ATTRi_THRESHOLD).SetFlt(0.01);
     dyna_Value(ATTRi_MERGE).SetInt(0);
     dyna_Value(ATTRi_MERGEDIST).SetFlt(0.04);
@@ -97,7 +97,7 @@ LxResult CInsetTool::tool_GetOp(void** ppvObj, unsigned /*flags*/)
         return LXe_FAILED;
 
     dyna_Value(ATTRi_MODE).GetInt(&toolop->mode);
-    dyna_Value(ATTRi_SIZE).GetFlt(&toolop->size);
+    dyna_Value(ATTRi_OFFSET).GetFlt(&toolop->offset);
     dyna_Value(ATTRi_THRESHOLD).GetFlt(&toolop->threshold);
 
     int value = 0;
@@ -143,7 +143,7 @@ LxResult CInsetTool::tmod_Enable(ILxUnknownID obj)
 
 LxResult CInsetTool::tmod_Down(ILxUnknownID vts, ILxUnknownID adjust)
 {
-    dyna_Value(ATTRi_SIZE).GetFlt(&m_size0);
+    dyna_Value(ATTRi_OFFSET).GetFlt(&m_offset0);
     int x, y;
     auto viewId = s_v3d.Mouse (&x, &y);
     s_v3d.View (viewId, m_view3D);
@@ -156,18 +156,18 @@ void CInsetTool::tmod_Move(ILxUnknownID vts, ILxUnknownID adjust)
     CLxUser_VectorStack vec(vts);
     LXpToolScreenEvent* spak = static_cast<LXpToolScreenEvent*>(vec.Read(offset_screen));
 
-    double size = m_size0 + (spak->cx - spak->px) * m_view3D.PixelSize();
-    if (size < 0.0)
-        size = 0.0;
-    at.SetFlt(ATTRi_SIZE, size);
+    double offset = m_offset0 + (spak->cx - spak->px) * m_view3D.PixelSize();
+    if (offset < 0.0)
+        offset = 0.0;
+    at.SetFlt(ATTRi_OFFSET, offset);
 }
 
 void CInsetTool::atrui_UIHints2(unsigned int index, CLxUser_UIHints& hints)
 {
     switch (index)
     {
-        case ATTRi_SIZE:
-            hints.MinFloat(0.0001);
+        case ATTRi_OFFSET:
+            hints.MinFloat(0.0);
             break;
         case ATTRi_THRESHOLD:
             hints.MinFloat(0.0);
@@ -313,6 +313,9 @@ LxResult CInsetToolOp::top_Evaluate(ILxUnknownID vts)
     if (!vector_stack.ReadObject(offset_subject, subject))
         return LXe_FAILED;
 
+    if (offset <= 0.0)
+        return LXe_OK;
+
     CLxUser_LayerScan scan;
     if (!subject.BeginScan(LXf_LAYERSCAN_EDIT_POLYS, scan))
         return LXe_FAILED;
@@ -321,13 +324,13 @@ LxResult CInsetToolOp::top_Evaluate(ILxUnknownID vts)
     check(scan.Count(&layer_count));
 
     SafeInset::SafeInsetParams safe_params;
-    safe_params.inset_size = size;
+    safe_params.inset_size = offset;
     safe_params.threshold = threshold;
     safe_params.merge = merge;
     safe_params.merge_dist = merge_dist;
 
     PaddingInset::PaddingInsetParams padding_params;
-    padding_params.inset_size = size;
+    padding_params.inset_size = offset;
     padding_params.flat = flat;
     padding_params.align = align;
     padding_params.connect = connect;
@@ -340,8 +343,6 @@ LxResult CInsetToolOp::top_Evaluate(ILxUnknownID vts)
 
         CLxUser_Point point(edit_mesh);
         CLxUser_Polygon polygon(edit_mesh);
-        //check(point.fromMesh(edit_mesh));
-        //check(polygon.fromMesh(edit_mesh));
 
         std::vector<LXtPolygonID> selected_polys;
         unsigned polygon_count = 0;

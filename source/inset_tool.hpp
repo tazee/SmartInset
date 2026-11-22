@@ -49,7 +49,7 @@ public:
     unsigned               offset_subject = 0;
     LXtMarkMode            select_mode = 0;
     int                    mode = MODE_SAFE;
-    double                 size = 0.15;
+    double                 offset = 0.0;
     double                 threshold = 0.01;
     bool                   merge = false;
     double                 merge_dist = 0.04;
@@ -90,7 +90,7 @@ public:
     static void initialize();
     static LXtTagInfoDesc descInfo[];
 
-    double m_size0;
+    double m_offset0;
 
 private:
     CLxUser_LayerService  layer_service;

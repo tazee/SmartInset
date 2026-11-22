@@ -49,7 +49,7 @@ enum InsetMode : int
 #define SRVNAME_TOOL    "tool.smartInset"
 
 #define ATTRs_MODE       "mode"
-#define ATTRs_SIZE       "size"
+#define ATTRs_OFFSET     "offset"
 #define ATTRs_THRESHOLD  "threshold"
 #define ATTRs_MERGE      "merge"
 #define ATTRs_MERGEDIST  "mergeDist"
@@ -58,7 +58,7 @@ enum InsetMode : int
 #define ATTRs_CONNECT    "connect"
 
 #define ATTRi_MODE       0
-#define ATTRi_SIZE       1
+#define ATTRi_OFFSET     1
 #define ATTRi_THRESHOLD  2
 #define ATTRi_MERGE      3
 #define ATTRi_MERGEDIST  4

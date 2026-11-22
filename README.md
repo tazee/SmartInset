@@ -35,13 +35,8 @@ Padding Inset<br>
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `mode` | Selector | Select `safe` or `padding`. |
-| `size` | Distance | Inset distance. |
-| `threshold` | Numeric | (Safe Inset) Collision-limit detection margin. |
-| `merge` | Boolean | (Safe Inset) Automatically merge nearby vertices. |
-| `mergeDist` | Distance | (Safe Inset) Vertex merge-distance threshold. |
-| `flat` | Boolean | (Padding Inset) Offset concave vertices flat. |
-| `align` | Angle | (Padding Inset) Direction for inside/outside determination rays. |
+| `mode` | Choice | Choice `safe` or `padding`. |
+| `offset` | Distance | Inset distance. |
 | `connect` | Boolean | (Padding Inset) Connect the outer boundary edges with a side skirt. |
 
 

@@ -34,7 +34,7 @@ CInsetCommand::CInsetCommand()
     dyna_Add(ATTRs_MODE, LXsTYPE_INTEGER);
     dyna_SetHint(ATTRi_MODE, inset_modes);
 
-    dyna_Add(ATTRs_SIZE, LXsTYPE_DISTANCE);
+    dyna_Add(ATTRs_OFFSET, LXsTYPE_DISTANCE);
 
     dyna_Add(ATTRs_THRESHOLD, LXsTYPE_FLOAT);
 
@@ -53,7 +53,6 @@ CInsetCommand::CInsetCommand()
 
 void CInsetCommand::initialize()
 {
-    printf("** initialize **\n");
     CLxGenericPolymorph* srv = new CLxPolymorph<CInsetCommand>;
     srv->AddInterface(new CLxIfc_Command<CInsetCommand>);
     srv->AddInterface(new CLxIfc_Attributes<CInsetCommand>);
@@ -86,12 +85,11 @@ bool CInsetCommand::basic_Enable(CLxUser_Message& /*msg*/)
 
 LxResult CInsetCommand::cmd_DialogInit(void)
 {
-    printf("** cmd_DialogInit **\n");
     if (!LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_MODE)))
         attr_SetInt(ATTRi_MODE, MODE_SAFE);
 
-    if (!LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_SIZE)))
-        attr_SetFlt(ATTRi_SIZE, 0.15);
+    if (!LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_OFFSET)))
+        attr_SetFlt(ATTRi_OFFSET, 0.15);
 
     if (!LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_THRESHOLD)))
         attr_SetFlt(ATTRi_THRESHOLD, 0.01);
@@ -118,8 +116,8 @@ void CInsetCommand::atrui_UIHints2(unsigned int index, CLxUser_UIHints& hints)
 {
     switch (index)
     {
-        case ATTRi_SIZE:
-            hints.MinFloat(0.0001);
+        case ATTRi_OFFSET:
+            hints.MinFloat(0.0);
             break;
 
         case ATTRi_THRESHOLD:
@@ -158,7 +156,6 @@ LxResult CInsetCommand::cmd_ArgEnable(unsigned int arg)
 
 void CInsetCommand::basic_Execute(unsigned int /*flags*/)
 {
-    printf("** Inset: start **\n");
     CLxUser_LayerScan scan;
     unsigned          nLayers = 0;
 
@@ -166,9 +163,14 @@ void CInsetCommand::basic_Execute(unsigned int /*flags*/)
     if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_MODE)))
         attr_GetInt(ATTRi_MODE, &mode);
 
+    double offset = 0.0;
+    attr_GetFlt(ATTRi_OFFSET, &offset);
+    if (offset <= 0.0)
+        return;
+
     SafeInset::SafeInsetParams safe_params;
-    if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_SIZE)))
-        attr_GetFlt(ATTRi_SIZE, &safe_params.inset_size);
+    if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_OFFSET)))
+        attr_GetFlt(ATTRi_OFFSET, &safe_params.inset_size);
     if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_THRESHOLD)))
         attr_GetFlt(ATTRi_THRESHOLD, &safe_params.threshold);
     if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_MERGE)))
@@ -181,7 +183,7 @@ void CInsetCommand::basic_Execute(unsigned int /*flags*/)
         attr_GetFlt(ATTRi_MERGEDIST, &safe_params.merge_dist);
 
     PaddingInset::PaddingInsetParams padding_params;
-    if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_SIZE)))
+    if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_OFFSET)))
         padding_params.inset_size = safe_params.inset_size;
     if (LXxCMDARG_ISSET(dyna_GetFlags(ATTRi_FLAT)))
     {
