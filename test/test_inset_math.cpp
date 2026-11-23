@@ -383,6 +383,102 @@ void test_padding_inset_lxo_regression()
     std::cout << "  -> Passed! Matches the 300mm padding result scene." << std::endl;
 }
 
+void test_safe_inset_lxo_regression()
+{
+    std::cout << "[Test] SafeInset on safe_test.lxo..." << std::endl;
+    const LxoMesh source = read_lxo_mesh(std::string(INSET_TEST_SOURCE_DIR) + "/safe_test.lxo");
+    const LxoMesh target = read_lxo_mesh(std::string(INSET_TEST_SOURCE_DIR) + "/safe_result.lxo");
+    require(source.faces.size() == 1, "Expected one selected face in safe_test.lxo");
+    const auto& face = source.faces[0];
+
+    std::vector<V3> polygon;
+    polygon.reserve(face.size());
+    for (size_t index : face)
+    {
+        require(index < source.points.size(), "Invalid point index in safe_test.lxo");
+        polygon.push_back(source.points[index]);
+    }
+
+    V3 normal{};
+    for (size_t i = 0; i < polygon.size(); ++i)
+    {
+        const V3& a = polygon[i];
+        const V3& b = polygon[(i + 1) % polygon.size()];
+        normal.x += (a.y - b.y) * (a.z + b.z);
+        normal.y += (a.z - b.z) * (a.x + b.x);
+        normal.z += (a.x - b.x) * (a.y + b.y);
+    }
+
+    SafeInset::SafeInsetParams params;
+    params.inset_size = 0.5;
+    params.threshold = 0.01;
+
+    SafeInset::InsetResult result;
+    require(SafeInset::ComputeSafeInset(polygon, normal.normalized(), params, result), "Safe inset failed on regression face");
+    require(result.success, "Safe inset did not mark the regression result successful");
+    require(result.all_new_vertices.size() == target.points.size(), "Unexpected vertex count");
+    require(result.all_faces.size() == target.faces.size(), "Unexpected face count");
+
+    // Match each result vertex to a target vertex
+    std::vector<size_t> result_to_target(result.all_new_vertices.size());
+    std::vector<bool> target_point_used(target.points.size(), false);
+    for (size_t i = 0; i < result.all_new_vertices.size(); ++i)
+    {
+        size_t best = target.points.size();
+        double best_distance = std::numeric_limits<double>::infinity();
+        for (size_t j = 0; j < target.points.size(); ++j)
+        {
+            if (target_point_used[j])
+                continue;
+            const double distance = dist(result.all_new_vertices[i], target.points[j]);
+            if (distance < best_distance)
+            {
+                best = j;
+                best_distance = distance;
+            }
+        }
+        require(best < target.points.size(), "No corresponding target vertex found");
+        require(best_distance < 1e-4, "Inset vertex differs from target scene");
+        result_to_target[i] = best;
+        target_point_used[best] = true;
+    }
+
+    // Match each result face to a target face
+    std::vector<bool> target_face_used(target.faces.size(), false);
+    size_t unmatched_faces = 0;
+    for (const auto& result_face : result.all_faces)
+    {
+        std::vector<size_t> mapped_face;
+        mapped_face.reserve(result_face.size());
+        for (size_t index : result_face)
+            mapped_face.push_back(result_to_target[index]);
+
+        bool matched = false;
+        for (size_t j = 0; j < target.faces.size(); ++j)
+        {
+            if (!target_face_used[j] && same_face_cycle(mapped_face, target.faces[j]))
+            {
+                target_face_used[j] = true;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched)
+            ++unmatched_faces;
+    }
+    require(unmatched_faces == 0, "Inset face topology differs from target scene");
+
+    size_t top_faces = 0;
+    for (size_t i = 0; i < result.all_faces.size(); ++i)
+    {
+        if (result.is_top_face[i])
+            ++top_faces;
+    }
+    require(top_faces == 1, "Expected exactly one top face");
+
+    std::cout << "  -> Passed! Matches the safe_result.lxo scene." << std::endl;
+}
+
 int main()
 {
     std::cout << "=== Running Inset Algorithm Unit Tests ===" << std::endl;
@@ -392,6 +488,7 @@ int main()
     test_padding_inset_quad();
     test_padding_inset_concave();
     test_padding_inset_lxo_regression();
+    test_safe_inset_lxo_regression();
     std::cout << "=== ALL TESTS PASSED SUCCESSFULLY! ===" << std::endl;
     return 0;
 }

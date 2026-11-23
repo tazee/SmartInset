@@ -219,8 +219,13 @@ namespace SafeInset
         }
 
         // Calculate collision limit distance for each vertex
-        std::vector<V2> ps2;
-        ps2.reserve(n);
+        struct InnerNode
+        {
+            V2  co;
+            int orig_idx = -1; // 0..n-1 for original vertices, -1 for added vertices
+        };
+        std::vector<InnerNode> inner_nodes;
+        inner_nodes.reserve(n);
 
         for (size_t i = 0; i < n; ++i)
         {
@@ -284,7 +289,7 @@ namespace SafeInset
             double d_final = std::min(min_dist, d2);
             double off2    = std::max(1.0 - params.threshold, 0.0);
             V2     pk_co   = ps[i] + mids[i] * (d_final * off2);
-            ps2.push_back(pk_co);
+            inner_nodes.push_back({ pk_co, static_cast<int>(i) });
         }
 
         // Cross region check
@@ -295,11 +300,11 @@ namespace SafeInset
         };
         std::vector<AddVert> adds;
 
-        for (size_t i = 0; i < ps2.size(); ++i)
+        for (size_t i = 0; i < inner_nodes.size(); ++i)
         {
-            size_t i2 = (i + 1) % ps2.size();
-            V2     p3 = ps2[i];
-            V2     p4 = ps2[i2];
+            size_t i2 = (i + 1) % inner_nodes.size();
+            V2     p3 = inner_nodes[i].co;
+            V2     p4 = inner_nodes[i2].co;
 
             for (size_t k = 0; k < ps.size(); ++k)
             {
@@ -307,7 +312,7 @@ namespace SafeInset
                     continue;
 
                 V2 p1_orig = ps[k];
-                V2 p2_orig = ps2[k];
+                V2 p2_orig = inner_nodes[k].co;
                 V2 p3b     = ps[i];
                 V2 p4b     = ps[i2];
 
@@ -330,9 +335,19 @@ namespace SafeInset
         std::sort(adds.begin(), adds.end(), [](const AddVert& a, const AddVert& b) { return a.insert_idx > b.insert_idx; });
         for (const auto& item : adds)
         {
-            if (item.insert_idx <= ps2.size())
+            if (item.insert_idx <= inner_nodes.size())
             {
-                ps2.insert(ps2.begin() + item.insert_idx, item.co);
+                inner_nodes.insert(inner_nodes.begin() + item.insert_idx, { item.co, -1 });
+            }
+        }
+
+        // Map original outer vertices to their index in inner_nodes
+        std::vector<size_t> outer_to_inner(n, 0);
+        for (size_t j = 0; j < inner_nodes.size(); ++j)
+        {
+            if (inner_nodes[j].orig_idx >= 0 && static_cast<size_t>(inner_nodes[j].orig_idx) < n)
+            {
+                outer_to_inner[inner_nodes[j].orig_idx] = j;
             }
         }
 
@@ -349,22 +364,22 @@ namespace SafeInset
             outer_indices[i] = i;
         }
 
-        // n..n+ps2.size()-1: new inner inset vertices
+        // n..n+inner_nodes.size()-1: new inner inset vertices
         size_t              inner_start = result.all_new_vertices.size();
         std::vector<size_t> inner_indices;
-        for (const auto& p2d : ps2)
+        for (const auto& node : inner_nodes)
         {
             inner_indices.push_back(result.all_new_vertices.size());
-            result.all_new_vertices.push_back(basis.unproject(p2d));
+            result.all_new_vertices.push_back(basis.unproject(node.co));
         }
 
         // Optional vertex merging for inner vertices if requested
+        std::vector<size_t> remap(inner_indices.size());
+        for (size_t i = 0; i < inner_indices.size(); ++i)
+            remap[i] = inner_indices[i];
+
         if (params.merge && params.merge_dist > 1e-6)
         {
-            std::vector<size_t> remap(inner_indices.size());
-            for (size_t i = 0; i < inner_indices.size(); ++i)
-                remap[i] = inner_indices[i];
-
             for (size_t i = 0; i < inner_indices.size(); ++i)
             {
                 for (size_t j = i + 1; j < inner_indices.size(); ++j)
@@ -375,45 +390,71 @@ namespace SafeInset
                     }
                 }
             }
-
-            // Compact unique vertices
-            std::vector<size_t> unique_inner;
-            for (size_t i = 0; i < inner_indices.size(); ++i)
-            {
-                size_t mapped = remap[i];
-                if (unique_inner.empty() || unique_inner.back() != mapped)
-                {
-                    unique_inner.push_back(mapped);
-                }
-            }
-            if (!unique_inner.empty() && unique_inner.front() == unique_inner.back())
-            {
-                unique_inner.pop_back();
-            }
-            if (unique_inner.size() >= 3)
-            {
-                inner_indices = unique_inner;
-            }
         }
 
         // Create top face
-        if (inner_indices.size() >= 3)
+        std::vector<size_t> top_face;
+        for (size_t i = 0; i < inner_indices.size(); ++i)
         {
-            result.all_faces.push_back(inner_indices);
+            size_t mapped = remap[i];
+            if (top_face.empty() || top_face.back() != mapped)
+            {
+                top_face.push_back(mapped);
+            }
+        }
+        if (top_face.size() > 1 && top_face.front() == top_face.back())
+        {
+            top_face.pop_back();
+        }
+        if (top_face.size() >= 3)
+        {
+            result.all_faces.push_back(top_face);
             result.is_top_face.push_back(true);
         }
 
-        // Create side skirt faces (fan quads between outer boundary and inner boundary)
-        size_t inner_count = ps2.size();
+        // Create side skirt faces (between outer boundary and inner boundary)
         for (size_t i = 0; i < n; ++i)
         {
-            size_t next_i  = (i + 1) % n;
-            size_t in_i    = inner_start + (i % inner_count);
-            size_t in_next = inner_start + (next_i % inner_count);
+            size_t next_i = (i + 1) % n;
+            size_t start  = outer_to_inner[i];
+            size_t end    = outer_to_inner[next_i];
 
-            std::vector<size_t> quad = { outer_indices[i], outer_indices[next_i], in_next, in_i };
-            result.all_faces.push_back(quad);
-            result.is_top_face.push_back(false);
+            std::vector<size_t> chain;
+            size_t              curr = start;
+            chain.push_back(curr);
+            while (curr != end)
+            {
+                curr = (curr + 1) % inner_nodes.size();
+                chain.push_back(curr);
+            }
+
+            std::vector<size_t> skirt_face;
+            skirt_face.push_back(outer_indices[i]);
+            skirt_face.push_back(outer_indices[next_i]);
+            for (int c = static_cast<int>(chain.size()) - 1; c >= 0; --c)
+            {
+                skirt_face.push_back(remap[chain[c]]);
+            }
+
+            // Remove consecutive duplicates
+            std::vector<size_t> clean_skirt;
+            for (size_t idx : skirt_face)
+            {
+                if (clean_skirt.empty() || clean_skirt.back() != idx)
+                {
+                    clean_skirt.push_back(idx);
+                }
+            }
+            if (clean_skirt.size() > 1 && clean_skirt.front() == clean_skirt.back())
+            {
+                clean_skirt.pop_back();
+            }
+
+            if (clean_skirt.size() >= 3)
+            {
+                result.all_faces.push_back(clean_skirt);
+                result.is_top_face.push_back(false);
+            }
         }
 
         result.success = true;
